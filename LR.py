@@ -40,7 +40,7 @@ for iteration in range(1,11):
     loo = LeaveOneOut()
 
     hyperparam_grid = {
-        'model__C': [0.01, 0.1, 1, 3],
+        'model__C': [0.01, 0.05, 0.1, 0.5, 1],
         'model__penalty': ['l1', 'l2']
     }
 
@@ -52,6 +52,7 @@ for iteration in range(1,11):
         n_jobs=-1                      
     )
     grid_search_cv.fit(X_train, y_train)
+    print(grid_search_cv.best_params_)
 
     best_pipeline = Pipeline([
         ('scaler', StandardScaler()),

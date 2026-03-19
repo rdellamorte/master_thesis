@@ -6,40 +6,44 @@ from sklearn.model_selection import train_test_split, LeaveOneOut
 from sklearn.metrics import classification_report, roc_auc_score, f1_score, balanced_accuracy_score, confusion_matrix
 from tqdm import tqdm
 from functools import partial
+from joblib import Parallel, delayed
 from pathlib import Path
 import warnings
 import logging
 logging.getLogger("pgmpy").setLevel(logging.WARNING)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+def loocv_fold(train_idx, val_idx, X_train, y_train, dag_edges, prior_type, target_name, num_parameter):
+    X_train_fold = X_train.iloc[train_idx]
+    y_train_fold = y_train.iloc[train_idx]
+    X_val_fold = X_train.iloc[val_idx]
+    
+    df_train_fold = X_train_fold.copy()
+    df_train_fold[target_name] = y_train_fold
+    
+    tan_fold = DiscreteBayesianNetwork(dag_edges)
+    
+    if prior_type == 'dirichlet':
+        tan_fold.fit(df_train_fold, estimator=BayesianEstimator, prior_type=prior_type, pseudo_counts=num_parameter)
+    else:
+        tan_fold.fit(df_train_fold, estimator=BayesianEstimator, prior_type=prior_type, equivalent_sample_size=num_parameter)
+    
+    prob = tan_fold.predict_probability(X_val_fold).iloc[0, 1]
+    return prob, y_train.iloc[val_idx[0]]
+
 def loocv_iteration(X_train, y_train, prior_type, target_name='surv_1yr', num_parameter = 1):
-    all_probs = []
-    all_true = []
+    df_full_train = X_train.copy()
+    df_full_train[target_name] = y_train
+    est = TreeSearch(df_full_train)
+    dag = est.estimate(estimator_type='tan', class_node=target_name)
+    dag_edges = list(dag.edges())
+    loo = LeaveOneOut()
 
-    for train_idx, val_idx in loo.split(X_train):
-        X_train_fold = X_train.iloc[train_idx]#.reset_index(drop=True)
-        y_train_fold = y_train.iloc[train_idx]#.reset_index(drop=True)
-        X_val_fold = X_train.iloc[val_idx]#.reset_index(drop=True)
-        y_val_fold = y_train.iloc[val_idx]#.reset_index(drop=True)
-
-        df_train = X_train_fold.copy()
-        df_train[target_name] = y_train_fold        
-
-        est = TreeSearch(df_train) #learn tree structure
-        dag = est.estimate(estimator_type='tan', class_node=target_name) #estimate DAG structure best fitting the dataset
-        tan = DiscreteBayesianNetwork(dag.edges()) #build bayes estimator based on the tree as prior
-        if (prior_type == 'dirichlet'):
-            tan.fit(df_train, estimator=BayesianEstimator, prior_type=prior_type, pseudo_counts=num_parameter) 
-        else:
-            tan.fit(df_train, estimator=BayesianEstimator, prior_type=prior_type, equivalent_sample_size=num_parameter)
-
-        X_test_df = X_val_fold
-
-        y_prob_df = tan.predict_probability(X_test_df)
-        y_prob = y_prob_df.iloc[:, 1].values 
-
-        all_probs.append(y_prob.item())
-        all_true.append(y_val_fold.item()) 
+    results = Parallel(n_jobs=-1)(delayed(loocv_fold)(
+        train_idx, val_idx, X_train, y_train, dag_edges, prior_type, target_name, num_parameter
+    ) for train_idx, val_idx in loo.split(X_train))
+    
+    all_probs, all_true = zip(*results)  
 
     all_true_np = np.array(all_true)
     all_probs_np = np.array(all_probs)
@@ -85,8 +89,8 @@ X['age'] = pd.cut(
     include_lowest=True 
 )
 
-X = pd.get_dummies(X, columns=['tnm8', 'region', 'smoking', 'keck', 'dececco', 'age'])
-X = pd.get_dummies(X, columns=['chemo', 'surg', 'radio', 'sex'], drop_first = True)
+cols = X.columns
+X[cols] = X[cols].astype('category')
 
 y = df[target]
 
@@ -98,8 +102,7 @@ prior_types = ['dirichlet', 'BDeu']
 pseudo_counts = [0.1, 1, 1.5, 3] 
 eq_sample_sizes = [0.1, 1, 2]
 
-
-for iteration in range(1,4):
+for iteration in range(1, 11):
     print(f"Starting iteration {iteration}")
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)
     param_metrics_acc = []
@@ -146,7 +149,7 @@ for iteration in range(1,4):
         tan.fit(df_train, estimator=BayesianEstimator, prior_type=best_prior, equivalent_sample_size=best_sample_size)
 
     y_prob = tan.predict_probability(data=X_test).iloc[:, 1].values 
-    y_pred = (y_prob >= 0.7).astype(int)
+    y_pred = (y_prob >= 0.75).astype(int)
 
     report = classification_report(y_test, y_pred, output_dict=True)
     print(confusion_matrix(y_test, y_pred))
@@ -167,6 +170,3 @@ rows = ['auc', 'f1_0', 'f1_1', 'f1_com']
 df_metrics = pd.DataFrame(metrics_dict, index=rows)
 df_metrics = df_metrics.round(2)
 print(df_metrics)
-
-#with pd.ExcelWriter(f"TAN_standard.xlsx", engine='xlsxwriter') as writer:
-#    df_metrics.to_excel(writer, sheet_name='Average performances')    

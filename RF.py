@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import RandomizedSearchCV, train_test_split, LeaveOneOut
+from sklearn.model_selection import GridSearchCV, train_test_split, LeaveOneOut
 from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
-from scipy.stats import randint
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
 from functools import partial
@@ -26,38 +25,40 @@ f1_1 = []
 f1_0 = []
 f1_com = []
 
-for iteration in range(1, 11):    
+for iteration in range(1, 4):    
     print(f"Starting iteration {iteration}")
+    
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)
     
     rfc = RandomForestClassifier(class_weight='balanced')
 
     param_distributions = {
-        'n_estimators': [100], 
-        'max_depth': randint(6, 12), 
+        'n_estimators': [120], 
+        'max_depth': [6, 8, 12], 
         'criterion': ['gini', 'entropy'],
-        'min_samples_leaf': randint(1, 6)
+        'min_samples_leaf': [1, 2, 5],
+        'max_features': [None]
     }
 
     loo = LeaveOneOut()
     
-    random_search = RandomizedSearchCV(
+    grid_search = GridSearchCV(
     estimator=rfc, 
-    param_distributions=param_distributions, 
-    n_iter=20,           
+    param_grid=param_distributions,         
     cv=loo,   
     scoring='balanced_accuracy', 
-    n_jobs=10,
+    n_jobs=-1
     )    
-    random_search.fit(X_train, y_train)
+    grid_search.fit(X_train, y_train)
 
-    print(random_search.best_params_)
+    print(grid_search.best_params_)
 
-    rfc = random_search.best_estimator_
+    rfc = grid_search.best_estimator_
     rfc.set_params(n_estimators=200)
+    rfc.set_params(n_jobs=-1)
     rfc.fit(X_train, y_train)
     y_probs = rfc.predict_proba(X_test)[:, 1]
-    y_pred = (y_probs >= 0.6).astype(int) #more class balancing needed
+    y_pred = (y_probs >= 0.7).astype(int) #more class balancing needed
 
     report = classification_report(y_test, y_pred, output_dict=True)
     auc_score = roc_auc_score(y_test, y_probs)

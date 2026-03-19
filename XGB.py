@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
-from scipy.stats import randint, uniform
 from xgboost import XGBClassifier
-from sklearn.model_selection import RandomizedSearchCV, train_test_split, LeaveOneOut
+from sklearn.model_selection import  GridSearchCV, train_test_split, LeaveOneOut
 from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
 from tqdm import tqdm
 from functools import partial
@@ -17,8 +16,9 @@ df = pd.read_csv(f'{base_dir.parent}\\dataset\\dataset_integrato.csv', sep=',')
 
 y = df['surv_1yr']
 X = df.drop(columns=['event_death','ID','surv_1yr','surv_2yr','surv_3yr','surv_4yr','surv_5yr'])
-X = pd.get_dummies(X, columns=['tnm8', 'region', 'smoking', 'keck', 'dececco'])
-X = pd.get_dummies(X, columns=['chemo', 'surg', 'radio', 'sex'], drop_first = True)
+
+cat_cols = X.columns.difference(['age'])
+X[cat_cols] = X[cat_cols].astype('category')
 
 auc_scores = []
 f1_1 = []
@@ -33,40 +33,40 @@ for iteration in range(1,11):
 
     xgb = XGBClassifier(
         eval_metric='logloss', 
-        tree_method='exact', 
-        scale_pos_weight=ratio 
+        tree_method='hist',         #'exact' requires OHE
+        scale_pos_weight=ratio,     #handle class imbalance
+        enable_categorical=True     #alternative to OHE
         )
     loo = LeaveOneOut()
     
     param_distributions = {
-        'n_estimators': [120], 
-        'learning_rate': uniform(0.01, 0.05),    
-        'max_depth': randint(3, 6),            
-        'min_child_weight': randint(1, 3),
-        'gamma': uniform(0.1, 0.4),
-        'subsample': uniform(0.7, 0.3), 
-        'colsample_bytree': uniform(0.8, 0.3) 
+        'n_estimators': [120],       
+        'learning_rate': [0.01, 0.01, 0.1, 0.5],    
+        'max_depth': [6, 8, 12],            
+        'min_child_weight': [1, 5],
+        'gamma': [0.01, 0.05, 0.1, 0.5],
+        'subsample': [0.8], 
+        'colsample_bytree': [0.8]
     }
 
-    random_search_cv = RandomizedSearchCV(
+    grid_search_cv = GridSearchCV(
         estimator=xgb,
-        param_distributions=param_distributions,        
-        n_iter=50,     
+        param_distributions=param_distributions,     
         scoring='balanced_accuracy', 
         cv=loo,
-        n_jobs=7                    
+        n_jobs=-1
     )
-    random_search_cv.fit(X_train, y_train)
+    grid_search_cv.fit(X_train, y_train)
    
-    xgb = random_search_cv.best_estimator_
-    print(random_search_cv.best_params_)
+    xgb = grid_search_cv.best_estimator_
+    print(grid_search_cv.best_params_)
 
     X_train_final, X_es_eval, y_train_final, y_es_eval = train_test_split(X_train, y_train, test_size=0.1, stratify=y_train)
     xgb.set_params(n_estimators=1000, early_stopping_rounds=10)
     
     xgb.fit(X_train_final, y_train_final, eval_set=[(X_es_eval, y_es_eval)], verbose=False)
     y_probs = xgb.predict_proba(X_test)[:, 1]
-    y_pred = (y_probs >= 0.6).astype(int)
+    y_pred = (y_probs >= 0.5).astype(int)
 
     report = classification_report(y_test, y_pred, output_dict=True)
     print(confusion_matrix(y_test, y_pred))
@@ -85,6 +85,3 @@ rows = ['auc', 'f1_0', 'f1_1', 'f1_com']
 df_metrics = pd.DataFrame(metrics_dict, index=rows)
 df_metrics = df_metrics.round(2)
 print(df_metrics)
-
-#with pd.ExcelWriter(f"XGB_standard.xlsx", engine='xlsxwriter') as writer:
-#    df_metrics.to_excel(writer, sheet_name='Average performances')

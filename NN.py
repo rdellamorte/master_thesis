@@ -18,6 +18,10 @@ class NeuralNetwork(nn.Module):
             nn.Sigmoid(),
             nn.Linear(hidden_size, 1)
         )
+        torch.nn.init.xavier_uniform_(self.network[0].weight)
+        torch.nn.init.xavier_uniform_(self.network[2].weight)
+        torch.nn.init.zeros_(self.network[0].bias)
+        torch.nn.init.zeros_(self.network[2].bias)
 
     def forward(self, x):
         x = self.flatten(x)
@@ -48,7 +52,7 @@ f1_1 = []
 f1_0 = []
 f1_com = []
 
-for iteration in range(1,11):
+for iteration in range(1, 11):
     print(f"Starting iteration {iteration}")
         
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)

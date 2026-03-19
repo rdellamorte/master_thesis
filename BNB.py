@@ -42,7 +42,7 @@ for iteration in range(1,11):
     bnb = BernoulliNB()
     loo = LeaveOneOut()
 
-    hyperparam_grid = { 'alpha': [0.1, 0.5, 1, 1.5, 2], 'fit_prior': [True, False] }
+    hyperparam_grid = { 'alpha': [0.1, 0.5, 1, 1.5, 2], 'fit_prior': [False] } #True induces imbalance
     grid_search = GridSearchCV(
         estimator=bnb, 
         param_grid=hyperparam_grid, 
@@ -57,7 +57,7 @@ for iteration in range(1,11):
     bnb_best.fit(X_train, y_train)
 
     y_probs = bnb_best.predict_proba(X_test)[:, 1]
-    y_pred = (y_probs >= 0.7).astype(int)
+    y_pred = (y_probs >= 0.5).astype(int)
 
     report = classification_report(y_test, y_pred, output_dict=True)
     auc_score = roc_auc_score(y_test, y_probs)

@@ -25,7 +25,7 @@ f1_1 = []
 f1_0 = []
 f1_com = []
 
-for iteration in range(1, 4):    
+for iteration in range(1, 11):    
     print(f"Starting iteration {iteration}")
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)

@@ -33,8 +33,8 @@ for iteration in range(1, 11):
     loo = LeaveOneOut()
 
     hyperparam_grid = {
-        'max_depth': [8, 10, 12],
-        'min_samples_leaf': [2, 5, 10], 
+        'max_depth': [6, 8, 10, 12],
+        'min_samples_leaf': [1, 2, 5], 
         'criterion': ['gini', 'entropy']
         }
     grid_search = GridSearchCV(
@@ -50,7 +50,7 @@ for iteration in range(1, 11):
     dt = grid_search.best_estimator_
     dt.fit(X_train, y_train)
     y_probs = dt.predict_proba(X_test)[:, 1]
-    y_pred = (y_probs >= 0.5).astype(int)       #class weight was balanced in model initialization
+    y_pred = (y_probs >= 0.6).astype(int)       #class weight was balanced in model initialization
 
     report = classification_report(y_test, y_pred, output_dict=True)
     print(confusion_matrix(y_test, y_pred))
